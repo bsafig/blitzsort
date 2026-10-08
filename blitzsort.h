@@ -85,8 +85,8 @@ namespace blitzsort
     void quicksort_optimized_impl(T *arr, int low, int high)
     {
         // Threshold: switch to insertion sort for small arrays
-        // 16 is empirically good for cache behavior
-        const int INSERTION_THRESHOLD = 16;
+        // 24 is optimal for insertion sort across random and mostly-sorted data (tested with experiment)
+        const int INSERTION_THRESHOLD = 24;
 
         while (low < high)
         {

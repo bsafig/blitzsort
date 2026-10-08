@@ -1,12 +1,10 @@
 #include "blitzsort.h"
 #include <iostream>
-#include <vector>
 #include <cstring>
 #include <algorithm>
 #include <chrono>
 #include <random>
 #include <iomanip>
-#include <cmath>
 
 using namespace std;
 using namespace std::chrono;
@@ -58,20 +56,32 @@ void fill_mostly_sorted(int *arr, int n, int seed = 0)
     }
 }
 
+struct BenchResult
+{
+    double avg, min, max;
+};
+
 // Benchmark sort
 template <typename SortFunc>
-double benchmark(SortFunc sort_func, int *arr, int n, int iterations = 1)
+BenchResult benchmark(SortFunc sort_func, int *arr, int n, int iterations = 1)
 {
     int *temp = new int[n];
-    auto start = high_resolution_clock::now();
+    double min_time = 1e9, max_time = 0, total = 0;
+
     for (int iter = 0; iter < iterations; iter++)
     {
         memcpy(temp, arr, n * sizeof(int));
+        auto start = high_resolution_clock::now();
         sort_func(temp, n);
+        auto end = high_resolution_clock::now();
+        double elapsed = duration<double, milli>(end - start).count();
+        total += elapsed;
+        min_time = min(min_time, elapsed);
+        max_time = max(max_time, elapsed);
     }
-    auto end = high_resolution_clock::now();
+
     delete[] temp;
-    return duration<double, milli>(end - start).count() / iterations;
+    return {total / iterations, min_time, max_time};
 }
 
 int main()
@@ -110,8 +120,8 @@ int main()
     // Performance on random data
     cout << "\nTest 2: Performance on Random Data\n";
     cout << string(50, '-') << "\n";
-    cout << "Array Size    | Baseline (ms) | Optimized (ms) | std::sort (ms) | Speedup\n";
-    cout << string(75, '-') << "\n";
+    cout << "Array Size    | Baseline (avg) | Optimized (avg) | std::sort (avg) | Speedup\n";
+    cout << string(80, '-') << "\n";
 
     int sizes[] = {1000, 10000, 100000};
     for (int size : sizes)
@@ -119,23 +129,23 @@ int main()
         int *data = new int[size];
         fill_random(data, size, 123);
 
-        int iterations = size <= 10000 ? 5 : 1;
+        int iterations = size <= 10000 ? 10 : 5;
 
-        double baseline_time = benchmark([](int *a, int n)
+        BenchResult baseline = benchmark([](int *a, int n)
                                          { blitzsort::quicksort_baseline(a, 0, n - 1); }, data, size, iterations);
 
-        double optimized_time = benchmark([](int *a, int n)
+        BenchResult optimized = benchmark([](int *a, int n)
                                           { blitzsort::quicksort_optimized(a, 0, n - 1); }, data, size, iterations);
 
-        double std_time = benchmark([](int *a, int n)
-                                    { std::sort(a, a + n); }, data, size, iterations);
+        BenchResult std_result = benchmark([](int *a, int n)
+                                           { std::sort(a, a + n); }, data, size, iterations);
 
-        double speedup = baseline_time / optimized_time;
+        double speedup = baseline.avg / optimized.avg;
 
         cout << setw(13) << size
-             << "| " << setw(13) << baseline_time
-             << "| " << setw(14) << optimized_time
-             << "| " << setw(14) << std_time
+             << "| " << setw(7) << baseline.avg << " (min:" << setw(6) << baseline.min << ")"
+             << "| " << setw(8) << optimized.avg << " (min:" << setw(6) << optimized.min << ")"
+             << "| " << setw(8) << std_result.avg << " (min:" << setw(6) << std_result.min << ")"
              << "| " << setw(6) << speedup << "x\n";
 
         delete[] data;
@@ -144,8 +154,8 @@ int main()
     // Worst-case behavior (reverse sorted)
     cout << "\nTest 3: Reverse-Sorted Data (Worst Case for Naive Quicksort)\n";
     cout << string(50, '-') << "\n";
-    cout << "Array Size    | Baseline (ms) | Optimized (ms) | Status\n";
-    cout << string(60, '-') << "\n";
+    cout << "Array Size    | Baseline (avg) | Optimized (avg) | Speedup\n";
+    cout << string(80, '-') << "\n";
 
     int reverse_sizes[] = {1000, 10000}; // Skip 100K+ (baseline is O(n²))
     for (int size : reverse_sizes)
@@ -153,20 +163,20 @@ int main()
         int *data = new int[size];
         fill_reverse(data, size);
 
-        int iterations = 5;
+        int iterations = 10;
 
-        double baseline_time = benchmark([](int *a, int n)
+        BenchResult baseline = benchmark([](int *a, int n)
                                          { blitzsort::quicksort_baseline(a, 0, n - 1); }, data, size, iterations);
 
-        double optimized_time = benchmark([](int *a, int n)
+        BenchResult optimized = benchmark([](int *a, int n)
                                           { blitzsort::quicksort_optimized(a, 0, n - 1); }, data, size, iterations);
 
-        double speedup = baseline_time / optimized_time;
+        double speedup = baseline.avg / optimized.avg;
 
         cout << setw(13) << size
-             << "| " << setw(13) << baseline_time
-             << "| " << setw(14) << optimized_time
-             << "| " << setw(6) << speedup << "x faster\n";
+             << "| " << setw(7) << baseline.avg << " (min:" << setw(6) << baseline.min << ")"
+             << "| " << setw(8) << optimized.avg << " (min:" << setw(6) << optimized.min << ")"
+             << "| " << setw(6) << speedup << "x\n";
 
         delete[] data;
     }
@@ -175,8 +185,8 @@ int main()
     // Mostly sorted data
     cout << "\nTest 4: Mostly-Sorted Data (Best Case for Cache Optimization)\n";
     cout << string(50, '-') << "\n";
-    cout << "Array Size    | Baseline (ms) | Optimized (ms) | Speedup\n";
-    cout << string(60, '-') << "\n";
+    cout << "Array Size    | Baseline (avg) | Optimized (avg) | Speedup\n";
+    cout << string(80, '-') << "\n";
 
     int mostly_sizes[] = {1000, 10000, 100000}; // Skip 1M (too slow)
     for (int size : mostly_sizes)
@@ -184,19 +194,19 @@ int main()
         int *data = new int[size];
         fill_mostly_sorted(data, size, 456);
 
-        int iterations = size <= 10000 ? 10 : (size <= 100000 ? 3 : 1);
+        int iterations = size <= 10000 ? 10 : 5;
 
-        double baseline_time = benchmark([](int *a, int n)
+        BenchResult baseline = benchmark([](int *a, int n)
                                          { blitzsort::quicksort_baseline(a, 0, n - 1); }, data, size, iterations);
 
-        double optimized_time = benchmark([](int *a, int n)
+        BenchResult optimized = benchmark([](int *a, int n)
                                           { blitzsort::quicksort_optimized(a, 0, n - 1); }, data, size, iterations);
 
-        double speedup = baseline_time / optimized_time;
+        double speedup = baseline.avg / optimized.avg;
 
         cout << setw(13) << size
-             << "| " << setw(13) << baseline_time
-             << "| " << setw(14) << optimized_time
+             << "| " << setw(7) << baseline.avg << " (min:" << setw(6) << baseline.min << ")"
+             << "| " << setw(8) << optimized.avg << " (min:" << setw(6) << optimized.min << ")"
              << "| " << setw(6) << speedup << "x\n";
 
         delete[] data;
